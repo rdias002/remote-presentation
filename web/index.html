@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>Presentation Remote</title>
+  <meta name="theme-color" content="#0b0e14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="deck">
+      <span id="deck-title" class="deck-title">Presentation Remote</span>
+      <span id="status-msg" class="status-msg"></span>
+    </div>
+    <div class="pos">
+      <span id="position">—</span>
+      <span id="conn-dot" class="conn-dot" title="connection"></span>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="preview-card">
+      <div class="preview-label">Next up</div>
+      <div class="preview-frame">
+        <img id="next-thumb" alt="next slide preview" />
+        <div id="next-empty" class="preview-empty">End of deck</div>
+      </div>
+    </section>
+
+    <section class="notes-card">
+      <div class="notes-head">
+        <span>Presenter notes</span>
+        <div class="notes-tools">
+          <button id="font-down" class="chip" aria-label="smaller notes">A−</button>
+          <button id="font-up" class="chip" aria-label="larger notes">A+</button>
+        </div>
+      </div>
+      <div id="notes" class="notes-body">No notes.</div>
+    </section>
+  </main>
+
+  <nav class="controlbar">
+    <button id="btn-prev" class="ctl ctl-prev" aria-label="previous">‹</button>
+    <button id="btn-grid" class="ctl ctl-grid" aria-label="all slides">▦</button>
+    <button id="btn-next" class="ctl ctl-next" aria-label="next">›</button>
+  </nav>
+
+  <div id="grid-overlay" class="grid-overlay" hidden>
+    <div class="grid-head">
+      <span>All slides</span>
+      <button id="grid-close" class="chip" aria-label="close">✕</button>
+    </div>
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

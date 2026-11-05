@@ -1,0 +1,17 @@
+# Python
+host/.venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Runtime
+*.log

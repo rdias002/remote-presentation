@@ -1,0 +1,25 @@
+[project]
+name = "remote-presentation-host"
+version = "0.1.0"
+description = "Host agent that lets a phone control a live PowerPoint presentation over WiFi"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "qrcode>=7.4",
+    "pillow>=10.0",
+    # Windows-only: the real PowerPoint COM backend. Harmless to omit on
+    # macOS/Linux, where the mock controller is used for development.
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[project.scripts]
+remote-presentation = "app.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
