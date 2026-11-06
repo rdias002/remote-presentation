@@ -24,17 +24,28 @@
   </header>
 
   <main class="stage">
-    <section class="preview-card">
-      <div class="preview-label">Next up</div>
-      <div class="preview-frame">
-        <img id="next-thumb" alt="next slide preview" />
-        <div id="next-empty" class="preview-empty">End of deck</div>
+    <section class="previews">
+      <div class="preview-card">
+        <div class="preview-label">Current</div>
+        <div class="preview-frame" id="current-frame">
+          <img id="current-thumb" alt="current slide" />
+          <div class="preview-empty">No slide</div>
+        </div>
+      </div>
+      <div class="preview-card">
+        <div class="preview-label">Next</div>
+        <div class="preview-frame" id="next-frame">
+          <img id="next-thumb" alt="next slide preview" />
+          <div class="preview-empty">End of deck</div>
+        </div>
       </div>
     </section>
 
-    <section class="notes-card">
+    <section id="notes-card" class="notes-card">
       <div class="notes-head">
-        <span>Presenter notes</span>
+        <button id="notes-toggle" class="notes-toggle" aria-expanded="true" aria-label="collapse notes">
+          <span class="chevron">▾</span><span>Presenter notes</span>
+        </button>
         <div class="notes-tools">
           <button id="font-down" class="chip" aria-label="smaller notes">A−</button>
           <button id="font-up" class="chip" aria-label="larger notes">A+</button>

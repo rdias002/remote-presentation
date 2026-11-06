@@ -9,20 +9,33 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# 16:9 is the common deck aspect ratio; height derived from configured width.
-ASPECT = 9 / 16
+# 16:9 (width/height ≈ 1.777) is the common deck aspect ratio and the default
+# used by the mock/placeholder path. The real PowerPoint backend passes the
+# deck's actual aspect so previews are never distorted.
+DEFAULT_ASPECT = 16 / 9
 
 
-def thumb_height(width: int) -> int:
-    return max(1, round(width * ASPECT))
+def thumb_height(width: int, aspect: float = DEFAULT_ASPECT) -> int:
+    """Pixel height for a given width and aspect (aspect = width / height)."""
+    if aspect <= 0:
+        aspect = DEFAULT_ASPECT
+    return max(1, round(width / aspect))
 
 
-def thumb_filename(index: int) -> str:
-    return f"slide-{index}.png"
+def thumb_filename(deck_id: object, index: int) -> str:
+    """Per-deck namespaced filename so two decks never share a cache file."""
+    return f"d{deck_id}-slide-{index}.png"
 
 
-def thumb_url(index: int) -> str:
-    return f"/thumbs/{thumb_filename(index)}"
+def thumb_url(deck_id: object, index: int, version: object = 0) -> str:
+    """Served path for a slide thumbnail.
+
+    The filename is namespaced by ``deck_id`` so distinct decks (e.g. two
+    simultaneous slideshows) can never collide on the same cache file. The
+    ``version`` is a cache-busting token bumped when a deck's own thumbnails are
+    re-exported (slide count / size change), forcing the browser to refetch.
+    """
+    return f"/thumbs/{thumb_filename(deck_id, index)}?v={version}"
 
 
 def make_placeholder_png(path: Path, index: int, total: int, title: str, width: int) -> None:

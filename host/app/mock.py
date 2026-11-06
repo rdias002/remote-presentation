@@ -26,6 +26,8 @@ _SAMPLE = [
 
 
 class MockController(PresentationController):
+    _DECK_ID = 0  # single fixed deck → fixed thumbnail namespace
+
     def __init__(self, cache_dir: Path, thumb_width: int = 480) -> None:
         super().__init__()
         self._cache_dir = cache_dir
@@ -48,7 +50,7 @@ class MockController(PresentationController):
     def _render_thumbs(self) -> None:
         for i in range(1, self._total + 1):
             thumbnails.make_placeholder_png(
-                self._cache_dir / thumbnails.thumb_filename(i),
+                self._cache_dir / thumbnails.thumb_filename(self._DECK_ID, i),
                 i,
                 self._total,
                 self._titles[i - 1],
@@ -56,8 +58,10 @@ class MockController(PresentationController):
             )
 
     def _build_state(self) -> PresentationState:
+        # The mock deck never changes, so a constant id/version is fine.
+        did, ver = self._DECK_ID, 1
         slides = [
-            SlideMeta(index=i, title=self._titles[i - 1], thumb_url=thumbnails.thumb_url(i))
+            SlideMeta(index=i, title=self._titles[i - 1], thumb_url=thumbnails.thumb_url(did, i, ver))
             for i in range(1, self._total + 1)
         ]
         has_next = self._index < self._total
@@ -69,8 +73,10 @@ class MockController(PresentationController):
             title="Sample Deck (mock)",
             slides=slides,
             current_notes=self._notes[self._index - 1],
-            current_thumb_url=thumbnails.thumb_url(self._index),
-            next_thumb_url=thumbnails.thumb_url(self._index + 1) if has_next else None,
+            current_thumb_url=thumbnails.thumb_url(did, self._index, ver),
+            next_thumb_url=thumbnails.thumb_url(did, self._index + 1, ver) if has_next else None,
+            aspect=thumbnails.DEFAULT_ASPECT,
+            has_notes=any(n.strip() for n in self._notes),
             message="Mock controller — PowerPoint not required",
         )
 

@@ -27,7 +27,7 @@ class Config:
         default_factory=lambda: os.environ.get("REMPREZ_TOKEN") or secrets.token_urlsafe(9)
     )
     thumb_width: int = field(
-        default_factory=lambda: int(os.environ.get("REMPREZ_THUMB_WIDTH", "480"))
+        default_factory=lambda: int(os.environ.get("REMPREZ_THUMB_WIDTH", "1280"))
     )
     force_mock: bool = field(default_factory=lambda: _truthy(os.environ.get("REMPREZ_MOCK")))
 

@@ -30,14 +30,28 @@ const els = {
   status: $("status-msg"),
   position: $("position"),
   dot: $("conn-dot"),
+  currentThumb: $("current-thumb"),
+  currentFrame: $("current-frame"),
   nextThumb: $("next-thumb"),
-  nextFrame: document.querySelector(".preview-frame"),
+  nextFrame: $("next-frame"),
+  notesCard: $("notes-card"),
   notes: $("notes"),
   prev: $("btn-prev"),
   next: $("btn-next"),
   grid: $("grid"),
   gridOverlay: $("grid-overlay"),
 };
+
+// Point one preview frame at a thumbnail URL, or show its empty state.
+function setPreview(frame, img, url) {
+  if (url) {
+    frame.classList.remove("empty");
+    img.src = withToken(url);
+  } else {
+    frame.classList.add("empty");
+    img.removeAttribute("src");
+  }
+}
 
 // ---- notes font size (persisted) ------------------------------------------
 function applyFont(px) {
@@ -49,6 +63,17 @@ try { notesPx = parseInt(localStorage.getItem("remprez_notes_px") || "20", 10) |
 applyFont(notesPx);
 $("font-up").onclick = () => applyFont((notesPx = Math.min(40, notesPx + 2)));
 $("font-down").onclick = () => applyFont((notesPx = Math.max(12, notesPx - 2)));
+
+// ---- notes collapse (persisted) -------------------------------------------
+let notesCollapsed = false;
+try { notesCollapsed = localStorage.getItem("remprez_notes_collapsed") === "1"; } catch (_) {}
+function applyNotesCollapsed() {
+  els.notesCard.classList.toggle("collapsed", notesCollapsed);
+  $("notes-toggle").setAttribute("aria-expanded", String(!notesCollapsed));
+  try { localStorage.setItem("remprez_notes_collapsed", notesCollapsed ? "1" : "0"); } catch (_) {}
+}
+applyNotesCollapsed();
+$("notes-toggle").onclick = () => { notesCollapsed = !notesCollapsed; applyNotesCollapsed(); };
 
 // ---- commands -------------------------------------------------------------
 function send(action, index) {
@@ -72,7 +97,12 @@ $("grid-close").onclick = () => toggleGrid(false);
 
 function toggleGrid(open) {
   els.gridOverlay.hidden = !open;
-  if (open && lastState) renderGrid(lastState);
+  if (open && lastState) {
+    renderGrid(lastState);
+    // Bring the current slide into view (list can be long).
+    const cur = els.grid.querySelector(".cell.current");
+    if (cur) cur.scrollIntoView({ block: "center" });
+  }
 }
 
 // Hardware / keyboard niceties (bluetooth clickers, paired keyboards).
@@ -88,16 +118,17 @@ function render(s) {
   els.status.textContent = s.message || "";
   els.position.textContent = s.total ? `${s.index || "–"} / ${s.total}` : "—";
 
-  // next-slide preview
-  if (s.next_thumb_url) {
-    els.nextFrame.classList.remove("empty");
-    els.nextThumb.src = withToken(s.next_thumb_url);
-  } else {
-    els.nextFrame.classList.add("empty");
-    els.nextThumb.removeAttribute("src");
+  // slide aspect ratio (width / height) → drives every preview frame + grid cell
+  if (s.aspect && s.aspect > 0) {
+    document.documentElement.style.setProperty("--slide-aspect", String(s.aspect));
   }
 
-  // notes
+  // current + next slide previews
+  setPreview(els.currentFrame, els.currentThumb, s.current_thumb_url);
+  setPreview(els.nextFrame, els.nextThumb, s.next_thumb_url);
+
+  // notes: hide the whole panel if the deck has none anywhere; else show text
+  els.notesCard.classList.toggle("gone", !s.has_notes);
   els.notes.textContent = (s.current_notes && s.current_notes.trim()) ? s.current_notes : "No notes.";
 
   // controls availability
@@ -114,15 +145,21 @@ function renderGrid(s) {
     cell.className = "cell" + (sl.index === s.index ? " current" : "") + (sl.hidden ? " hidden-slide" : "");
     cell.onclick = () => { send("goto", sl.index); toggleGrid(false); };
 
+    // Same frame-div + image pattern as the Current/Next previews, so the
+    // thumbnail keeps the slide aspect reliably (aspect-ratio on a bare <img>
+    // collapses on some mobile browsers).
+    const thumb = document.createElement("div");
+    thumb.className = "thumb";
     const img = document.createElement("img");
     img.loading = "lazy";
     img.src = withToken(sl.thumb_url);
+    thumb.append(img);
 
     const cap = document.createElement("div");
     cap.className = "cap";
     cap.innerHTML = `<span class="n">${sl.index}</span><span class="t">${escapeHtml(sl.title)}</span>`;
 
-    cell.append(img, cap);
+    cell.append(thumb, cap);
     frag.append(cell);
   });
   els.grid.replaceChildren(frag);

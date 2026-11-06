@@ -157,7 +157,13 @@ async def thumb(filename: str) -> FileResponse:
     path = CACHE_DIR / safe
     if path.suffix.lower() != ".png" or not path.is_file():
         raise HTTPException(status_code=404, detail="thumbnail not found")
-    return FileResponse(path, media_type="image/png")
+    # URLs are versioned (?v=gen changes when the deck/thumbnails change), so the
+    # bytes at a given URL are immutable and safe to cache aggressively.
+    return FileResponse(
+        path,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 # -------------------------------------------------------------------- WebSocket

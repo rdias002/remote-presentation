@@ -10,6 +10,7 @@
   --ok: #46d19e;
   --bad: #ff6b6b;
   --notes-size: 20px;
+  --slide-aspect: 1.7778; /* width / height; overwritten per-deck by app.js */
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
@@ -57,7 +58,8 @@ body {
 }
 .conn-dot.ok { background: var(--ok); }
 
-/* stage */
+/* stage — portrait default: a single vertically-scrolling column
+   (previews stacked, notes below). Landscape overrides this to a row. */
 .stage {
   flex: 1;
   min-height: 0;
@@ -65,20 +67,34 @@ body {
   flex-direction: column;
   gap: 12px;
   padding: 12px 16px;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.preview-card { flex: 0 0 auto; }
+/* previews: two equal frames — stacked (vertical) in portrait,
+   side-by-side (horizontal) in landscape / wide screens. */
+.previews {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.preview-card { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .preview-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; }
 .preview-frame {
   position: relative;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--slide-aspect);
+  width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
 }
-.preview-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.preview-frame img {
+  width: 100%; height: 100%;
+  object-fit: contain; display: block;
+  image-rendering: auto; /* high-res source; let the browser downscale smoothly */
+}
 .preview-empty {
   position: absolute; inset: 0;
   display: none; align-items: center; justify-content: center;
@@ -88,7 +104,7 @@ body {
 .preview-frame.empty .preview-empty { display: flex; }
 
 .notes-card {
-  flex: 1;
+  flex: 0 0 auto;            /* portrait: natural height; the stage scrolls */
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -97,16 +113,28 @@ body {
   border-radius: 12px;
   overflow: hidden;
 }
+.notes-card.gone { display: none; }       /* deck has no notes at all */
 .notes-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px;
   border-bottom: 1px solid var(--line);
   font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
 }
+.notes-toggle {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; cursor: pointer;
+  color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit;
+  padding: 0;
+}
+.notes-toggle .chevron { transition: transform .15s; display: inline-block; }
+.notes-card.collapsed .notes-toggle .chevron { transform: rotate(-90deg); }
+.notes-card.collapsed { flex: 0 0 auto; }
+.notes-card.collapsed .notes-body { display: none; }
+.notes-card.collapsed .notes-head { border-bottom: none; }
 .notes-tools { display: flex; gap: 8px; }
 .notes-body {
-  flex: 1; min-height: 0;
-  overflow-y: auto;
+  /* portrait: flow with content so the whole stage scrolls as one */
+  min-height: 0;
   padding: 14px 16px calc(16px + var(--safe-b));
   font-size: var(--notes-size);
   line-height: 1.5;
@@ -166,18 +194,28 @@ body {
   border-bottom: 1px solid var(--line);
   font-weight: 600;
 }
+/* scrollable list with a large preview per slide (1 column, 2 on wide screens) */
 .grid {
-  flex: 1; overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;          /* allow the flex child to shrink so overflow scrolls */
+  overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  grid-template-columns: 1fr;
+  grid-auto-rows: max-content;
+  gap: 14px;
   padding: 16px;
   padding-bottom: calc(16px + var(--safe-b));
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  -webkit-overflow-scrolling: touch;
 }
-@media (min-width: 560px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 900px) {
+  .grid { grid-template-columns: repeat(2, 1fr); max-width: 1100px; }
+}
 .cell {
   border: 2px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--panel-2);
   cursor: pointer;
@@ -185,10 +223,72 @@ body {
 }
 .cell.current { border-color: var(--accent); }
 .cell.hidden-slide { opacity: .5; }
-.cell img { width: 100%; aspect-ratio: 16/9; object-fit: contain; display: block; }
-.cell .cap {
-  display: flex; justify-content: space-between; gap: 6px;
-  padding: 6px 8px; font-size: 12px; color: var(--muted);
+.cell .thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--slide-aspect);
+  background: var(--panel-2);
 }
-.cell .cap .n { color: var(--text); font-weight: 600; }
+.cell .thumb img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain; display: block;
+}
+.cell .cap {
+  display: flex; justify-content: flex-start; align-items: baseline; gap: 10px;
+  padding: 10px 12px; font-size: 14px; color: var(--muted);
+}
+.cell .cap .n { color: var(--text); font-weight: 700; }
 .cell .cap .t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* -------------------------------------------------------------- landscape/wide
+   In landscape the stage becomes a row: the two previews sit side-by-side
+   (horizontal) on the left and the notes panel scrolls on the right. Portrait
+   keeps the stacked, page-scrolling layout above. */
+@media (orientation: landscape) {
+  .stage {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 12px;
+    overflow: hidden;         /* everything is sized to fit; no clipping */
+  }
+  .previews {
+    flex: 1 1 auto;
+    flex-direction: row;      /* current + next horizontal */
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+    align-items: stretch;     /* cards fill the row height */
+  }
+  .preview-card { flex: 1 1 0; min-width: 0; min-height: 0; }
+  /* Height-driven in landscape: the frame fills the available card height and
+     the image keeps its true ratio via object-fit, so a short screen never
+     clips the bottom (the width-driven aspect-ratio box would overflow). */
+  .preview-frame {
+    aspect-ratio: auto;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+    width: 100%;
+  }
+
+  .notes-card {
+    flex: 0 1 36%;
+    max-width: 440px;
+    min-height: 0;
+  }
+  /* A collapsed notes panel shouldn't keep a wide empty column in landscape. */
+  .notes-card.collapsed { flex: 0 0 auto; }
+  .notes-body { flex: 1 1 auto; overflow-y: auto; }  /* internal scroll */
+}
+
+/* Short landscape (phones): slim the top and control bars so nothing clips. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .topbar { padding: 6px 12px; padding-top: max(6px, env(safe-area-inset-top)); }
+  .deck-title { font-size: 14px; }
+  .stage { padding: 10px 12px; }
+  .preview-label { margin-bottom: 4px; }
+  .controlbar { padding: 6px 12px calc(6px + var(--safe-b)); gap: 8px; }
+  .ctl { font-size: 26px; padding: 10px 0; border-radius: 12px; }
+  .ctl-grid { font-size: 20px; padding: 0 18px; }
+}

@@ -1,6 +1,6 @@
 // Service worker: cache only the static app shell so the UI survives a brief
 // WiFi blip. Dynamic paths (/api, /ws, /thumbs) are never cached.
-const CACHE = "remprez-shell-v1";
+const CACHE = "remprez-shell-v5";
 const SHELL = [
   "./",
   "index.html",

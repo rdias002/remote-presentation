@@ -89,8 +89,17 @@ class PowerPointController(PresentationController):
 
         self._app = None  # COM Application (lives on worker thread)
         self._state = PresentationState(message="Connecting to PowerPoint…")
-        self._thumb_sig: tuple | None = None
-        self._last_index = -1
+        # Lightweight signal the poller compares to detect a change. It includes
+        # the active deck's identity (not just the slide number) so switching to
+        # another running slideshow is detected even at the same slide index.
+        self._last_poll_sig: tuple | None = None
+        # Per-deck thumbnail cache, keyed by full path. Each deck gets its own
+        # id so its thumbnails live under a distinct filename namespace
+        # (d{id}-slide-N.png) and can never be confused with another deck's —
+        # the cause of the grid "mixing up" when two shows run at once.
+        self._decks: dict[str, dict] = {}
+        self._next_deck_id = 0
+        self._cur: dict | None = None  # the tracked deck's cache entry
 
     # ------------------------------------------------------------------ public
 
@@ -183,12 +192,19 @@ class PowerPointController(PresentationController):
     # ------------------------------------------------------------- COM reads
 
     def _poll(self) -> None:
-        """Cheap change check: re-read only when the live position moved."""
+        """Cheap change check: re-read only when the live signature moved.
+
+        The signature is (active deck, slide position), so advancing a slide,
+        switching to another running show, or opening a different deck all
+        trigger a re-read — the old code compared only the slide number and
+        missed a switch between two shows sitting on the same slide index.
+        """
         try:
-            index = self._current_position()
+            sig = self._live_signature()
         except Exception:
-            index = 0
-        if index != self._last_index:
+            sig = None
+        if sig != self._last_poll_sig:
+            self._last_poll_sig = sig
             self._safe_update(self._read_state, emit=True)
 
     def _safe_update(self, reader, emit: bool = False) -> None:
@@ -197,26 +213,72 @@ class PowerPointController(PresentationController):
         except Exception as exc:
             state = PresentationState(message=f"PowerPoint read error: {exc}")
         self._state = state
-        self._last_index = state.index
         if emit:
             self._emit(state)
 
-    def _current_position(self) -> int:
+    def _live_signature(self) -> tuple:
+        """(tracked deck identity, current slide position) — cheap to compute.
+
+        Identity comes from the tracked SHOW's deck (not ActivePresentation,
+        which PowerPoint does NOT move to a newly started show), so switching to
+        another running show is detected and followed.
+        """
         app = self._app
-        if app is None or app.SlideShowWindows.Count == 0:
-            return 0
-        return int(app.SlideShowWindows.Item(1).View.CurrentShowPosition)
+        if app is None:
+            return (None, 0)
+        show = self._active_show_window()
+        if show is None:
+            # No show running: fall back to the active edit deck so that merely
+            # opening/switching a deck still refreshes the grid.
+            try:
+                return (app.ActivePresentation.FullName, 0)
+            except Exception:
+                return (None, 0)
+        try:
+            name = show.Presentation.FullName
+        except Exception:
+            name = None
+        try:
+            pos = int(show.View.CurrentShowPosition)
+        except Exception:
+            pos = 0
+        return (name, pos)
+
+    def _active_show_window(self):
+        """The slideshow window to control/track when shows are running.
+
+        PowerPoint prepends a newly started show at index 1, so Item(1) is the
+        most recently started (current) show — the one the presenter just
+        launched and wants the remote to drive. ActivePresentation is NOT
+        reliable here: it stays on the previously active deck when a second show
+        starts. Returns None when no show is running.
+        """
+        app = self._app
+        if app is None:
+            return None
+        try:
+            if int(app.SlideShowWindows.Count) == 0:
+                return None
+            return app.SlideShowWindows.Item(1)
+        except Exception:
+            return None
 
     def _show_view(self):
-        app = self._app
-        if app is None or app.SlideShowWindows.Count == 0:
+        show = self._active_show_window()
+        try:
+            return show.View if show is not None else None
+        except Exception:
             return None
-        return app.SlideShowWindows.Item(1).View
 
     def _read_state(self) -> PresentationState:
         app = self._app
+        # Track the active running show; fall back to the active (edit) deck.
+        # Deriving the deck FROM the chosen show keeps slides, notes and the
+        # current/next preview all pointing at the same presentation when more
+        # than one slideshow is open.
+        show = self._active_show_window()
         try:
-            pres = app.ActivePresentation
+            pres = show.Presentation if show is not None else app.ActivePresentation
         except Exception:
             return PresentationState(
                 has_presentation=False, message="Open a presentation in PowerPoint"
@@ -224,7 +286,9 @@ class PowerPointController(PresentationController):
 
         slides = pres.Slides
         total = int(slides.Count)
-        self._ensure_thumbs(pres, total)
+        self._ensure_deck_cache(pres, slides, total)
+        cur = self._cur or {"id": 0, "ver": 0, "aspect": thumbnails.DEFAULT_ASPECT, "has_notes": False}
+        did, ver = cur["id"], cur["ver"]
 
         metas: list[SlideMeta] = []
         for i in range(1, total + 1):
@@ -233,19 +297,19 @@ class PowerPointController(PresentationController):
                 SlideMeta(
                     index=i,
                     title=self._slide_title(s, i),
-                    thumb_url=thumbnails.thumb_url(i),
+                    thumb_url=thumbnails.thumb_url(did, i, ver),
                     hidden=self._is_hidden(s),
                 )
             )
 
         running = False
         index = 0
-        try:
-            if app.SlideShowWindows.Count > 0:
-                index = int(app.SlideShowWindows.Item(1).View.CurrentShowPosition)
+        if show is not None:
+            try:
+                index = int(show.View.CurrentShowPosition)
                 running = True
-        except Exception:
-            running = False
+            except Exception:
+                running = False
 
         notes = self._notes_for(slides, index) if index else ""
         has_next = 0 < index < total
@@ -259,24 +323,76 @@ class PowerPointController(PresentationController):
             title=self._safe(lambda: pres.Name, "Presentation"),
             slides=metas,
             current_notes=notes,
-            current_thumb_url=thumbnails.thumb_url(index) if index else None,
-            next_thumb_url=thumbnails.thumb_url(index + 1) if has_next else None,
+            current_thumb_url=thumbnails.thumb_url(did, index, ver) if index else None,
+            next_thumb_url=thumbnails.thumb_url(did, index + 1, ver) if has_next else None,
+            aspect=cur["aspect"],
+            has_notes=cur["has_notes"],
             message=msg,
         )
 
-    def _ensure_thumbs(self, pres, total: int) -> None:
-        sig = (self._safe(lambda: pres.Name, ""), total)
-        if sig == self._thumb_sig:
-            return
+    def _ensure_deck_cache(self, pres, slides, total: int) -> None:
+        """Ensure the tracked deck's thumbnails exist in their own filename
+        namespace, and record its aspect / notes flag. Keyed by the deck's full
+        path so two distinct decks (e.g. two running shows) never share cache
+        files — this is what stops the grid mixing decks up. Does real export
+        work only the first time a deck is seen (or if its slide count / size
+        changed); otherwise it just re-selects the cached entry.
+        """
+        key = self._safe(lambda: pres.FullName, "") or self._safe(lambda: pres.Name, "")
         width = self._thumb_width
-        height = thumbnails.thumb_height(width)
-        for i in range(1, total + 1):
-            dest = self._cache_dir / thumbnails.thumb_filename(i)
+        entry = self._decks.get(key)
+        if entry is not None and entry["total"] == total and entry["width"] == width:
+            self._cur = entry  # already cached with the same shape
+            return
+
+        did = entry["id"] if entry is not None else self._next_deck_id
+        if entry is None:
+            self._next_deck_id += 1
+        ver = (entry["ver"] + 1) if entry is not None else 1
+
+        aspect = self._deck_aspect(pres)
+        height = thumbnails.thumb_height(width, aspect)
+
+        # Replace only THIS deck's own files (namespaced); other decks untouched.
+        for old in self._cache_dir.glob(f"d{did}-slide-*.png"):
             try:
-                pres.Slides.Item(i).Export(str(dest), "PNG", width, height)
+                old.unlink()
             except Exception:
                 pass
-        self._thumb_sig = sig
+        for i in range(1, total + 1):
+            dest = self._cache_dir / thumbnails.thumb_filename(did, i)
+            try:
+                slides.Item(i).Export(str(dest), "PNG", width, height)
+            except Exception:
+                pass
+
+        entry = {
+            "id": did,
+            "ver": ver,
+            "total": total,
+            "width": width,
+            "aspect": aspect,
+            "has_notes": self._deck_has_notes(slides, total),
+        }
+        self._decks[key] = entry
+        self._cur = entry
+
+    def _deck_aspect(self, pres) -> float:
+        try:
+            setup = pres.PageSetup
+            w = float(setup.SlideWidth)
+            h = float(setup.SlideHeight)
+            if w > 0 and h > 0:
+                return w / h
+        except Exception:
+            pass
+        return thumbnails.DEFAULT_ASPECT
+
+    def _deck_has_notes(self, slides, total: int) -> bool:
+        for i in range(1, total + 1):
+            if self._notes_for(slides, i).strip():
+                return True
+        return False
 
     def _nav(self, action: str, index: int = 0) -> PresentationState:
         view = self._show_view()
@@ -292,7 +408,6 @@ class PowerPointController(PresentationController):
                 pass
         state = self._read_state()
         self._state = state
-        self._last_index = state.index
         return state
 
     # ------------------------------------------------------------- COM helpers

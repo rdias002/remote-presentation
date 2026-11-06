@@ -33,4 +33,6 @@ class PresentationState(BaseModel):
     current_notes: str = ""
     current_thumb_url: Optional[str] = None
     next_thumb_url: Optional[str] = None
+    aspect: float = 16 / 9  # slide aspect ratio (width / height), e.g. 1.777
+    has_notes: bool = False  # true if ANY slide in the deck has presenter notes
     message: str = ""  # human-readable status, e.g. "PowerPoint not running"
