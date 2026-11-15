@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import sys
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -31,7 +32,11 @@ from .mock import MockController
 from .models import PresentationState
 
 HERE = Path(__file__).resolve().parent
-WEB_DIR = HERE.parent.parent / "web"
+if getattr(sys, "frozen", False):
+    # PyInstaller bundle: web/ is unpacked next to the frozen modules.
+    WEB_DIR = Path(sys._MEIPASS) / "web"  # type: ignore[attr-defined]
+else:
+    WEB_DIR = HERE.parent.parent / "web"
 
 cfg = Config()
 CACHE_DIR = Path(tempfile.mkdtemp(prefix="remprez-thumbs-"))

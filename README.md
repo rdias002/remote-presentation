@@ -13,6 +13,24 @@ The **host agent** runs on the computer that's presenting (it's the only thing
 that can drive PowerPoint and read notes/thumbnails). The **phone is just a web
 app** — no install needed, works on Android, iOS, and tablets.
 
+## Install (Windows)
+
+1. Download **`RemotePresentation.exe`** from the
+   [latest release](https://github.com/rdias002/remote-presentation/releases/latest).
+   You don't need Python.
+2. Open your deck in PowerPoint and **start the slideshow (F5)**.
+3. Double-click `RemotePresentation.exe`. A console window opens and shows a
+   pairing URL and a **QR code**.
+   - **SmartScreen** may warn that the app is unrecognized because the exe isn't
+     code-signed. Click **More info → Run anyway**.
+   - **Windows Firewall** will ask whether to allow network access. Allow it on
+     **Private networks** so your phone can connect.
+4. On your phone (same WiFi), scan the QR code. To stop the host, close the
+   console window.
+
+To keep the pairing URL the same across restarts, set a fixed token before
+launching: `set REMPREZ_TOKEN=mysecret` then `RemotePresentation.exe`, from `cmd`.
+
 ## Status
 
 - ✅ **Windows + PowerPoint** backend (COM automation via pywin32) — the primary target.
@@ -20,7 +38,7 @@ app** — no install needed, works on Android, iOS, and tablets.
 - 🔜 Web decks (Google Slides / reveal.js) and macOS/Keynote — the controller
   interface (`app/controller.py`) is pluggable so these slot in without a rewrite.
 
-## Run it (Windows, real PowerPoint)
+## Run from source (Windows, real PowerPoint)
 
 1. Install **Python 3.10+** and **Microsoft PowerPoint** (desktop).
 2. Install the host:
@@ -97,3 +115,7 @@ curl -s "http://127.0.0.1:8765/api/state?t=testtoken"        # full state
 curl -s -X POST "http://127.0.0.1:8765/api/next?t=testtoken"  # advance
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/api/state  # 403 (no token)
 ```
+
+## License
+
+[MIT](LICENSE)

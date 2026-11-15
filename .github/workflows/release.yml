@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./host pyinstaller
+
+      - name: Build exe
+        working-directory: host
+        run: pyinstaller --noconfirm --distpath ../dist --workpath ../build remote-presentation.spec
+
+      - name: Smoke test (mock backend)
+        shell: pwsh
+        run: |
+          $env:REMPREZ_MOCK = "1"
+          $p = Start-Process -FilePath dist\RemotePresentation.exe -PassThru -NoNewWindow
+          $ok = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest -Uri http://127.0.0.1:8765/ -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200 -and $r.Content -match "<html") { $ok = $true; break }
+            } catch {}
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Get-Process RemotePresentation -ErrorAction SilentlyContinue | Stop-Process -Force
+          if (-not $ok) { throw "exe did not serve the PWA" }
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist\RemotePresentation.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  RemotePresentation.exe" | Out-File -Encoding ascii dist\RemotePresentation.exe.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemotePresentation-windows
+          path: dist/RemotePresentation.exe*
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/RemotePresentation.exe
+            dist/RemotePresentation.exe.sha256
